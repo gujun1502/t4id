@@ -1,0 +1,280 @@
+宙流体粒子系统
+Preview??预览Code??代码
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>宇宙流体粒子系统</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #000;
+    }
+    canvas {
+      display: block;
+    }
+    .controls {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: white;
+      font-family: Arial, sans-serif;
+      background: rgba(0,0,0,0.5);
+      padding: 10px;
+      border-radius: 5px;
+    }
+    button {
+      margin: 5px;
+      padding: 5px 10px;
+      background: #333;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #555;
+    }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <div>鼠标: 引力/斥力场</div>
+    <div>点击: 切换引力/斥力</div>
+    <button id="addParticles">添加粒子</button>
+    <button id="changeColors">切换颜色主题</button>
+  </div>
+
+  <script>
+    let particles = [];
+    let numParticles = 1000;
+    let flowField = [];
+    let cols, rows;
+    let resolution = 20;
+    let zoff = 0;
+    let attractMode = true;
+    let colorTheme = 0;
+    let colorThemes = [
+      // 蓝紫星云
+      {
+        background: [0, 0, 15, 5],
+        primary: [70, 130, 255],
+        secondary: [180, 100, 255],
+        tertiary: [255, 255, 255]
+      },
+      // 红色星云
+      {
+        background: [10, 0, 0, 5],
+        primary: [255, 50, 50],
+        secondary: [255, 150, 50],
+        tertiary: [255, 255, 150]
+      },
+      // 绿色星云
+      {
+        background: [0, 10, 5, 5],
+        primary: [50, 255, 100],
+        secondary: [100, 200, 255],
+        tertiary: [200, 255, 200]
+      }
+    ];
+
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      background(0);
+      
+      cols = floor(width / resolution);
+      rows = floor(height / resolution);
+      
+      // 初始化流场
+      for (let i = 0; i < cols; i++) {
+        flowField[i] = [];
+        for (let j = 0; j < rows; j++) {
+          flowField[i][j] = createVector(0, 0);
+        }
+      }
+      
+      // 创建初始粒子
+      for (let i = 0; i < numParticles; i++) {
+        particles.push(new Particle());
+      }
+      
+      // 添加按钮事件监听
+      document.getElementById('addParticles').addEventListener('click', function() {
+        for (let i = 0; i < 500; i++) {
+          particles.push(new Particle());
+        }
+      });
+      
+      document.getElementById('changeColors').addEventListener('click', function() {
+        colorTheme = (colorTheme + 1) % colorThemes.length;
+      });
+      
+      // 鼠标点击切换吸引/排斥模式
+      canvas.addEventListener('click', function() {
+        attractMode = !attractMode;
+      });
+    }
+
+    function draw() {
+      // 添加半透明背景以创建轨迹效果
+      fill(...colorThemes[colorTheme].background);
+      rect(0, 0, width, height);
+      
+      // 更新流场
+      updateFlowField();
+      
+      // 更新并显示粒子
+      for (let i = 0; i < particles.length; i++) {
+        particles[i].follow(flowField);
+        particles[i].update();
+        particles[i].show();
+        particles[i].edges();
+      }
+      
+      zoff += 0.003; // 流场时间变化
+    }
+
+    function updateFlowField() {
+      let xoff = 0;
+      for (let i = 0; i < cols; i++) {
+        let yoff = 0;
+        for (let j = 0; j < rows; j++) {
+          // 使用噪声创建流场向量
+          let angle = noise(xoff, yoff, zoff) * TWO_PI * 2;
+          let v = p5.Vector.fromAngle(angle);
+          v.setMag(0.5);
+          
+          // 添加鼠标影响
+          if (mouseIsPressed) {
+            let mouseVector = createVector(mouseX, mouseY);
+            let pos = createVector(i * resolution, j * resolution);
+            let force = p5.Vector.sub(mouseVector, pos);
+            let distance = force.mag();
+            
+            if (distance < 200) {
+              force.normalize();
+              if (!attractMode) force.mult(-1); // 切换吸引/排斥
+              force.mult(5 / (distance * 0.1 + 1));
+              v.add(force);
+            }
+          }
+          
+          flowField[i][j] = v;
+          yoff += 0.1;
+        }
+        xoff += 0.1;
+      }
+    }
+
+    class Particle {
+      constructor() {
+        this.pos = createVector(random(width), random(height));
+        this.vel = createVector(0, 0);
+        this.acc = createVector(0, 0);
+        this.maxSpeed = random(1, 4);
+        this.size = random(1, 3);
+        this.colorValue = random();
+        this.prevPos = this.pos.copy();
+        this.lifespan = random(100, 200);
+        this.age = 0;
+      }
+      
+      update() {
+        this.vel.add(this.acc);
+        this.vel.limit(this.maxSpeed);
+        this.prevPos = this.pos.copy();
+        this.pos.add(this.vel);
+        this.acc.mult(0);
+        this.age++;
+        
+        // 如果粒子寿命结束，重置它
+        if (this.age > this.lifespan) {
+          this.pos = createVector(random(width), random(height));
+          this.vel = createVector(0, 0);
+          this.age = 0;
+          this.lifespan = random(100, 200);
+        }
+      }
+      
+      applyForce(force) {
+        this.acc.add(force);
+      }
+      
+      follow(flowfield) {
+        let x = floor(this.pos.x / resolution);
+        let y = floor(this.pos.y / resolution);
+        x = constrain(x, 0, cols - 1);
+        y = constrain(y, 0, rows - 1);
+        
+        let force = flowfield[x][y].copy();
+        this.applyForce(force);
+      }
+      
+      show() {
+        // 根据粒子的colorValue选择颜色
+        let primaryColor = colorThemes[colorTheme].primary;
+        let secondaryColor = colorThemes[colorTheme].secondary;
+        let tertiaryColor = colorThemes[colorTheme].tertiary;
+        
+        let c;
+        if (this.colorValue < 0.33) {
+          c = primaryColor;
+        } else if (this.colorValue < 0.66) {
+          c = secondaryColor;
+        } else {
+          c = tertiaryColor;
+        }
+        
+        // 计算透明度 - 基于速度和年龄
+        let alpha = map(this.vel.mag(), 0, this.maxSpeed, 50, 255) * 
+                   map(min(this.age, this.lifespan - this.age), 0, 50, 0, 1);
+        
+        stroke(c[0], c[1], c[2], alpha);
+        strokeWeight(this.size);
+        line(this.prevPos.x, this.prevPos.y, this.pos.x, this.pos.y);
+      }
+      
+      edges() {
+        if (this.pos.x > width) {
+          this.pos.x = 0;
+          this.prevPos = this.pos.copy();
+        }
+        if (this.pos.x < 0) {
+          this.pos.x = width;
+          this.prevPos = this.pos.copy();
+        }
+        if (this.pos.y > height) {
+          this.pos.y = 0;
+          this.prevPos = this.pos.copy();
+        }
+        if (this.pos.y < 0) {
+          this.pos.y = height;
+          this.prevPos = this.pos.copy();
+        }
+      }
+    }
+
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+      cols = floor(width / resolution);
+      rows = floor(height / resolution);
+      
+      // 重新初始化流场
+      flowField = [];
+      for (let i = 0; i < cols; i++) {
+        flowField[i] = [];
+        for (let j = 0; j < rows; j++) {
+          flowField[i][j] = createVector(0, 0);
+        }
+      }
+      
+      background(0);
+    }
+  </script>
+</body>
+</html>
+
